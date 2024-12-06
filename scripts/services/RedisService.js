@@ -10,8 +10,7 @@ export default class RedisService {
     async connect(config) {
         try {
             const redisConfig = {
-                url: config.redis.url,
-                password: config.redis.password
+                url: `redis://redis-elasticache.h5vflu.ng.0001.euw2.cache.amazonaws.com:6379`
             };
 
             this.client = createClient(redisConfig);
