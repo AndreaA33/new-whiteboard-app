@@ -23,10 +23,13 @@ import { Server } from "socket.io";
 
 import { fileURLToPath } from "url";
 
+import RedisService from './services/RedisService.js';
+import { createAdapter } from "@socket.io/redis-adapter";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export default function startBackendServer(port) {
+export default async function startBackendServer(port) {
     const window = new JSDOM("").window;
     const DOMPurify = createDOMPurify(window);
 
@@ -35,7 +38,15 @@ export default function startBackendServer(port) {
     var server = http.Server(app);
     server.listen(port);
     var io = new Server(server, { path: "/ws-api" });
-    WhiteboardInfoBackendService.start(io);
+    
+    // Create Redis service instance and get pub/sub clients only if Redis is configured
+    let ioClients = null;
+    if (config.redis?.url) {
+        const redisService = new RedisService();
+        await redisService.connect(config);
+        ioClients = await redisService.createIOClients();
+        io.adapter(createAdapter(ioClients.pubClient, ioClients.subClient));
+    }
 
     console.log("socketserver running on port:" + port);
 
@@ -349,23 +360,20 @@ export default function startBackendServer(port) {
             socket.compress(false).broadcast.to(whiteboardId).emit("refreshUserBadges", null); //Removes old user Badges
         });
 
-        socket.on("drawToWhiteboard", function (content) {
+        socket.on("drawToWhiteboard", async function (content) {
             if (!whiteboardId || ReadOnlyBackendService.isReadOnly(whiteboardId)) return;
 
             content = escapeAllContentStrings(content);
             content = purifyEncodedStrings(content);
 
             if (accessToken === "" || accessToken == content["at"]) {
-                const broadcastTo = (wid) =>
-                    socket.compress(false).broadcast.to(wid).emit("drawToWhiteboard", content);
-                // broadcast to current whiteboard
-                broadcastTo(whiteboardId);
-                // broadcast the same content to the associated read-only whiteboard
-                const readOnlyId = ReadOnlyBackendService.getReadOnlyId(whiteboardId);
-                broadcastTo(readOnlyId);
-                s_whiteboard.handleEventsAndData(content); //save whiteboardchanges on the server
-            } else {
-                socket.emit("wrongAccessToken", true);
+                // Save to Redis
+                const currentData = await RedisService.getWhiteboardData(whiteboardId);
+                currentData.push(content);
+                await RedisService.saveWhiteboardData(whiteboardId, currentData);
+
+                // Broadcast to all instances
+                socket.broadcast.to(whiteboardId).emit("drawToWhiteboard", content);
             }
         });
 
