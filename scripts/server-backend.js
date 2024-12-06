@@ -37,15 +37,27 @@ export default async function startBackendServer(port) {
 
     var server = http.Server(app);
     server.listen(port);
-    var io = new Server(server, { path: "/ws-api" });
+    var io = new Server(server, {
+        path: "/ws-api",
+        cors: {
+            origin: "*",  // Be more specific in production
+            methods: ["GET", "POST"],
+            allowedHeaders: ["*"],
+            credentials: true
+        },
+        transports: ['websocket', 'polling'],
+        allowEIO3: true,  // Enable Engine.IO v3 compatibility
+    });
     
     // Create Redis service instance and get pub/sub clients
     const redisService = new RedisService();
     try {
         await redisService.connect();
         const ioClients = await redisService.createIOClients();
-        io.adapter(createAdapter(ioClients.pubClient, ioClients.subClient));
-        console.log('Redis adapter configured successfully');
+        if (ioClients) {
+            io.adapter(createAdapter(ioClients.pubClient, ioClients.subClient));
+            console.log('Redis adapter configured successfully');
+        }
     } catch (error) {
         console.error('Failed to initialize Redis:', error);
         // Continue without Redis if it fails
