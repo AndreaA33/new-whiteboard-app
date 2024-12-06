@@ -1,29 +1,40 @@
 import RedisService from './RedisService.js';
 
-export default class WhiteboardInfoBackendService {
-    async join(clientId, whiteboardId, screenResolution) {
-        const info = await RedisService.getWhiteboardInfo(whiteboardId) || {
-            nbConnectedUsers: 0,
-            screenResolutions: {}
-        };
-
-        info.nbConnectedUsers++;
-        info.screenResolutions[clientId] = screenResolution;
-
-        await RedisService.saveWhiteboardInfo(whiteboardId, info);
+export default class WBInfoBackendService {
+    constructor() {
+        this.whiteboards = new Map();
     }
 
-    async leave(clientId, whiteboardId) {
-        const info = await RedisService.getWhiteboardInfo(whiteboardId);
-        if (!info) return;
+    join(socketId, whiteboardId, screenResolution) {
+        if (!this.whiteboards.has(whiteboardId)) {
+            this.whiteboards.set(whiteboardId, new Map());
+        }
+        const whiteboard = this.whiteboards.get(whiteboardId);
+        whiteboard.set(socketId, { screenResolution });
+    }
 
-        info.nbConnectedUsers--;
-        delete info.screenResolutions[clientId];
+    leave(socketId, whiteboardId) {
+        if (this.whiteboards.has(whiteboardId)) {
+            const whiteboard = this.whiteboards.get(whiteboardId);
+            whiteboard.delete(socketId);
+            if (whiteboard.size === 0) {
+                this.whiteboards.delete(whiteboardId);
+            }
+        }
+    }
 
-        if (info.nbConnectedUsers <= 0) {
-            await RedisService.client.del(`whiteboardInfo:${whiteboardId}`);
-        } else {
-            await RedisService.saveWhiteboardInfo(whiteboardId, info);
+    getInfo(whiteboardId) {
+        return this.whiteboards.get(whiteboardId) || new Map();
+    }
+
+    setScreenResolution(socketId, whiteboardId, screenResolution) {
+        if (this.whiteboards.has(whiteboardId)) {
+            const whiteboard = this.whiteboards.get(whiteboardId);
+            if (whiteboard.has(socketId)) {
+                const userInfo = whiteboard.get(socketId);
+                userInfo.screenResolution = screenResolution;
+                whiteboard.set(socketId, userInfo);
+            }
         }
     }
 }

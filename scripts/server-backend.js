@@ -375,8 +375,11 @@ export default async function startBackendServer(port) {
 
             if (accessToken === "" || accessToken == content["at"]) {
                 try {
-                    // Use the redisService instance instead of the class
-                    const currentData = await redisService.getWhiteboardData(whiteboardId);
+                    // Get current data and ensure it's an array
+                    let currentData = await redisService.getWhiteboardData(whiteboardId);
+                    if (!Array.isArray(currentData)) {
+                        currentData = [];
+                    }
                     currentData.push(content);
                     await redisService.saveWhiteboardData(whiteboardId, currentData);
 
@@ -414,11 +417,15 @@ export default async function startBackendServer(port) {
             content = escapeAllContentStrings(content);
             if (accessToken === "" || accessToken == content["at"]) {
                 const screenResolution = content["windowWidthHeight"];
-                WhiteboardInfoBackendService.setScreenResolution(
-                    socket.id,
-                    whiteboardId,
-                    screenResolution
-                );
+                // Update user's screen resolution in Redis
+                try {
+                    redisService.saveWhiteboardInfo(whiteboardId, {
+                        screenResolution: screenResolution,
+                        userId: socket.id
+                    });
+                } catch (error) {
+                    console.error('Error updating screen resolution:', error);
+                }
             }
         });
     });
