@@ -87,7 +87,7 @@ export default async function startBackendServer(port) {
      * @apiExample {curl} Example usage:
      *     curl -i http://[rootUrl]/api/loadwhiteboard?wid=[MyWhiteboardId]
      */
-    app.get("/api/loadwhiteboard", function (req, res) {
+    app.get("/api/loadwhiteboard", async function (req, res) {
         let query = escapeAllContentStrings(req["query"]);
         const wid = query["wid"];
         const at = query["at"]; //accesstoken
@@ -95,9 +95,13 @@ export default async function startBackendServer(port) {
             const widForData = ReadOnlyBackendService.isReadOnly(wid)
                 ? ReadOnlyBackendService.getIdFromReadOnlyId(wid)
                 : wid;
-            const ret = s_whiteboard.loadStoredData(widForData);
-            res.send(ret);
-            res.end();
+            try {
+                const ret = await redisService.getWhiteboardData(widForData);
+                res.send(ret);
+            } catch (error) {
+                console.error('Error loading whiteboard data:', error);
+                res.status(500).send('Error loading whiteboard data');
+            }
         } else {
             res.status(401); //Unauthorized
             res.end();
@@ -370,13 +374,17 @@ export default async function startBackendServer(port) {
             content = purifyEncodedStrings(content);
 
             if (accessToken === "" || accessToken == content["at"]) {
-                // Save to Redis
-                const currentData = await RedisService.getWhiteboardData(whiteboardId);
-                currentData.push(content);
-                await RedisService.saveWhiteboardData(whiteboardId, currentData);
+                try {
+                    // Use the redisService instance instead of the class
+                    const currentData = await redisService.getWhiteboardData(whiteboardId);
+                    currentData.push(content);
+                    await redisService.saveWhiteboardData(whiteboardId, currentData);
 
-                // Broadcast to all instances
-                socket.broadcast.to(whiteboardId).emit("drawToWhiteboard", content);
+                    // Broadcast to all instances
+                    socket.broadcast.to(whiteboardId).emit("drawToWhiteboard", content);
+                } catch (error) {
+                    console.error('Error handling whiteboard data:', error);
+                }
             }
         });
 
