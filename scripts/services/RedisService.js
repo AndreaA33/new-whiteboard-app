@@ -12,7 +12,7 @@ export default class RedisService {
     async connect() {
         try {
             const redisConfig = {
-                url: `redis-cache-1.h5vflu.ng.0001.euw2.cache.amazonaws.com:6379`,
+                url: `redis://redis-cache-1.h5vflu.ng.0001.euw2.cache.amazonaws.com:6379`,
                 socket: {
                     connectTimeout: 10000,
                     reconnectStrategy: (retries) => {
